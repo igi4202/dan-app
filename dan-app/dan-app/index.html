@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Dan</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Dan">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&display=swap');
+
+  :root{
+    --bg: #000000;
+    --ink: #FFFFFF;
+    --date-color: #7FD99A;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  html, body{
+    height:100%;
+    width:100%;
+    background: #000000;
+    overflow: hidden;
+  }
+
+  body{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    font-family:'Archivo', sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .stage{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap: clamp(1.4rem, 5vh, 3rem);
+    padding: 2vw 6vw;
+    width:100%;
+  }
+
+  .day{
+    font-family:'Archivo', sans-serif;
+    font-weight:800;
+    font-size: clamp(3.6rem, 14vw, 11rem);
+    line-height: 0.95;
+    color: var(--ink);
+    text-align:center;
+    letter-spacing:-0.01em;
+    text-transform: capitalize;
+    user-select:none;
+  }
+
+  .meta{
+    display:flex;
+    align-items:baseline;
+    gap: 1.1em;
+    font-family:'Archivo', sans-serif;
+    font-weight:600;
+    font-size: clamp(1.65rem, 4.2vw, 2.4rem);
+    letter-spacing: 0.02em;
+    font-variant-numeric: lining-nums tabular-nums;
+    user-select:none;
+  }
+
+  .meta .date{
+    color: var(--date-color);
+  }
+
+  /* Landscape orijentacija: telefon je širi nego visok, pa raspoređujemo
+     prostor da dan ostane dominantan a sat/datum udobno ispod, bez da
+     naleću na ivice ekrana. */
+  @media (orientation: landscape){
+    .stage{
+      gap: clamp(1.2rem, 6vh, 2.6rem);
+      padding: 1vh 5vw;
+    }
+    .day{
+      font-size: clamp(3.6rem, 13vw, 10.5rem);
+    }
+    .meta{
+      font-size: clamp(1.7rem, 4vw, 2.6rem);
+    }
+  }
+</style>
+</head>
+<body>
+
+  <div class="stage">
+    <div class="day" id="day">—</div>
+    <div class="meta">
+      <span class="date" id="date">-- ---</span>
+    </div>
+  </div>
+
+  <!-- Skriveni video koristi se kao rezervni trik da spreči gašenje ekrana
+       na uređajima gde Wake Lock API nije podržan (npr. stariji Safari). -->
+  <video id="keepAliveVideo" loop muted playsinline style="position:fixed; width:1px; height:1px; opacity:0.01; pointer-events:none;">
+    <source src="data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAAAu1tZGF0AAACrgYF//+q3EXpvebZSLeWLNgg2SPu73gyNjQgLSBjb3JlIDE2NCAtIEg=" type="video/mp4">
+  </video>
+
+<script>
+  const dani = ['Nedelja','Ponedeljak','Utorak','Sreda','Četvrtak','Petak','Subota'];
+  const meseci = ['januar','februar','mart','april','maj','jun','jul','avgust','septembar','oktobar','novembar','decembar'];
+
+  const dayEl = document.getElementById('day');
+  const dateEl = document.getElementById('date');
+
+  // Vreme se čita direktno iz sistemskog sata telefona (new Date()),
+  // pa se automatski prati vremenska zona i podešavanje sata na uređaju.
+  function tick(){
+    const now = new Date();
+    dayEl.textContent = dani[now.getDay()];
+    dateEl.textContent = now.getDate() + '. ' + meseci[now.getMonth()];
+  }
+
+  tick();
+  // Datum se menja jednom dnevno, dovoljno je proveravati na minut
+  setInterval(tick, 60000);
+
+  // --- Pokušaj zaključavanja u landscape orijentaciji (best effort) ---
+  function tryLockLandscape(){
+    if (screen.orientation && screen.orientation.lock) {
+      screen.orientation.lock('landscape').catch(()=>{});
+    }
+  }
+  tryLockLandscape();
+  // Nema akcije na dodir ekrana - ekran je zaključan samo za gledanje,
+  // da slučajni dodiri ne otvore browser meni ili izađu iz prikaza.
+
+  // --- Sprečavanje gašenja ekrana / screen savera ---
+
+  let wakeLock = null;
+
+  async function requestWakeLock(){
+    try {
+      if ('wakeLock' in navigator) {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => {
+          requestWakeLock();
+        });
+      }
+    } catch(e) {
+      // Ignoriši grešku, radiće se rezervni trik sa video tagom.
+    }
+  }
+
+  function startVideoFallback(){
+    const v = document.getElementById('keepAliveVideo');
+    if (v) {
+      v.play().catch(()=>{});
+    }
+  }
+
+  requestWakeLock();
+  startVideoFallback();
+
+  // Registracija service worker-a - omogućava da aplikacija radi i bez interneta
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      requestWakeLock();
+      startVideoFallback();
+    }
+  });
+
+
+</script>
+
+</body>
+</html>
